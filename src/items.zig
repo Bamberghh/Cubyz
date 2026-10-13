@@ -1588,13 +1588,14 @@ pub fn sortRecipes() void {
 		if (!entry.found_existing) entry.value_ptr.* = .empty;
 		entry.value_ptr.*.append(allocator, recipe);
 	}
-	// Convert it to a list & sort group internals
+	// Convert it to a list & sort group contents
 	const GroupEntry = struct {
 		resultItem: BaseItemIndex,
 		recipes: List(Recipe),
 	};
 	var groupList: List(GroupEntry) = .initCapacity(allocator, groupMap.size);
 	defer groupList.deinit(allocator);
+	defer for (groupList.items) |groupEntry| groupEntry.recipes.deinit(allocator);
 	var groupMapIterator = groupMap.iterator();
 	while (groupMapIterator.next()) |entry| {
 		const groupEntry: GroupEntry = .{
@@ -1602,21 +1603,34 @@ pub fn sortRecipes() void {
 			.recipes = entry.value_ptr.*,
 		};
 		std.mem.sort(Recipe, groupEntry.recipes.items, {}, struct {
+			fn order(lhs: Recipe, rhs: Recipe) std.math.Order {
+				const resultAmountOrder = std.math.order(lhs.resultAmount, rhs.resultAmount);
+				if (resultAmountOrder != .eq) return resultAmountOrder;
+				const sourceItemsOrder = orderBaseItemSlices(lhs.sourceItems, rhs.sourceItems);
+				if (sourceItemsOrder != .eq) return sourceItemsOrder;
+				const sourceAmountsOrder = std.mem.order(u16, lhs.sourceAmounts, rhs.sourceAmounts);
+				return sourceAmountsOrder;
+			}
 			fn lessThan(_: void, lhs: Recipe, rhs: Recipe) bool {
-				return orderBaseItemSlices(lhs.sourceItems, rhs.sourceItems) == .lt;
+				return order(lhs, rhs) == .lt;
 			}
 		}.lessThan);
 		groupList.append(allocator, groupEntry);
 	}
 	// Sort the groups
 	std.mem.sort(GroupEntry, groupList.items, {}, struct {
+		fn order(lhs: GroupEntry, rhs: GroupEntry) std.math.Order {
+			const lhsFirst = lhs.recipes.items[0];
+			const rhsFirst = rhs.recipes.items[0];
+			const sourceItemsOrder = orderBaseItemSlices(lhsFirst.sourceItems, rhsFirst.sourceItems);
+			if (sourceItemsOrder != .eq) return sourceItemsOrder;
+			const sourceAmountsOrder = std.mem.order(u16, lhsFirst.sourceAmounts, rhsFirst.sourceAmounts);
+			if (sourceAmountsOrder != .eq) return sourceAmountsOrder;
+			const resultItemOrder = std.mem.order(u8, lhs.resultItem.id(), rhs.resultItem.id());
+			return resultItemOrder;
+		}
 		fn lessThan(_: void, lhs: GroupEntry, rhs: GroupEntry) bool {
-			switch (orderBaseItemSlices(lhs.recipes.items[0].sourceItems, rhs.recipes.items[0].sourceItems)) {
-				.eq => {},
-				.lt => return true,
-				.gt => return false,
-			}
-			return std.mem.lessThan(u8, lhs.resultItem.id(), rhs.resultItem.id());
+			return order(lhs, rhs) == .lt;
 		}
 	}.lessThan);
 	// Copy recipes back
