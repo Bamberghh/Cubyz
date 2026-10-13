@@ -719,6 +719,7 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 	while (iterator.next()) |entry| {
 		registerRecipesFromZon(entry.value_ptr.*);
 	}
+	items.sortRecipes();
 
 	try sbb.registerBlueprints(&worldAssets.blueprints);
 	try sbb.registerSBB(&worldAssets.structureBuildingBlocks);

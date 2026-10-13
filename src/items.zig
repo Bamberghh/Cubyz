@@ -1561,3 +1561,70 @@ pub fn registerRecipes(zon: ZonElement) void {
 		};
 	}
 }
+
+fn orderBaseItemSlices(lhs: []const BaseItemIndex, rhs: []const BaseItemIndex) std.math.Order {
+	if (lhs.ptr != rhs.ptr) {
+        const n = @min(lhs.len, rhs.len);
+        for (lhs[0..n], rhs[0..n]) |lhs_elem, rhs_elem| {
+            switch (std.mem.order(u8, lhs_elem.id(), rhs_elem.id())) {
+                .eq => continue,
+                .lt => return .lt,
+                .gt => return .gt,
+            }
+        }
+    }
+    return std.math.order(lhs.len, rhs.len);
+}
+
+pub fn sortRecipes() void {
+	const startTime = main.timestamp();
+
+	const allocator = main.globalAllocator;
+	// Create a resultItem => recipes map
+	var groupMap: std.AutoHashMapUnmanaged(BaseItemIndex, List(Recipe)) = .empty;
+	defer groupMap.deinit(allocator.allocator);
+	for (recipeList.items) |recipe| {
+		const entry = groupMap.getOrPut(allocator.allocator, recipe.resultItem) catch unreachable;
+		if (!entry.found_existing) entry.value_ptr.* = .empty;
+		entry.value_ptr.*.append(allocator, recipe);
+	}
+	// Convert it to a list & sort group internals
+	const GroupEntry = struct {
+		resultItem: BaseItemIndex,
+		recipes: List(Recipe),
+	};
+	var groupList: List(GroupEntry) = .initCapacity(allocator, groupMap.size);
+	defer groupList.deinit(allocator);
+	var groupMapIterator = groupMap.iterator();
+	while (groupMapIterator.next()) |entry| {
+		const groupEntry: GroupEntry = .{
+			.resultItem = entry.key_ptr.*,
+			.recipes = entry.value_ptr.*,
+		};
+		std.mem.sort(Recipe, groupEntry.recipes.items, {}, struct {
+			fn lessThan(_: void, lhs: Recipe, rhs: Recipe) bool {
+				return orderBaseItemSlices(lhs.sourceItems, rhs.sourceItems) == .lt;
+			}
+		}.lessThan);
+		groupList.append(allocator, groupEntry);
+	}
+	// Sort the groups
+	std.mem.sort(GroupEntry, groupList.items, {}, struct {
+		fn lessThan(_: void, lhs: GroupEntry, rhs: GroupEntry) bool {
+			switch (orderBaseItemSlices(lhs.recipes.items[0].sourceItems, rhs.recipes.items[0].sourceItems)) {
+				.eq => {},
+				.lt => return true,
+				.gt => return false,
+			}
+			return std.mem.lessThan(u8, lhs.resultItem.id(), rhs.resultItem.id());
+		}
+	}.lessThan);
+	// Copy recipes back
+	var i: usize = 0;
+	for (groupList.items) |groupEntry| {
+		std.mem.copyForwards(Recipe, recipeList.items[i..], groupEntry.recipes.items);
+		i += groupEntry.recipes.items.len;
+	}
+
+	std.log.info("Recipe sorting took {} ms", .{startTime.durationTo(main.timestamp()).toMilliseconds()});
+}
