@@ -1564,16 +1564,16 @@ pub fn registerRecipes(zon: ZonElement) void {
 
 fn orderBaseItemSlices(lhs: []const BaseItemIndex, rhs: []const BaseItemIndex) std.math.Order {
 	if (lhs.ptr != rhs.ptr) {
-        const n = @min(lhs.len, rhs.len);
-        for (lhs[0..n], rhs[0..n]) |lhs_elem, rhs_elem| {
-            switch (std.mem.order(u8, lhs_elem.id(), rhs_elem.id())) {
-                .eq => continue,
-                .lt => return .lt,
-                .gt => return .gt,
-            }
-        }
-    }
-    return std.math.order(lhs.len, rhs.len);
+		const n = @min(lhs.len, rhs.len);
+		for (lhs[0..n], rhs[0..n]) |lhs_elem, rhs_elem| {
+			switch (std.mem.order(u8, lhs_elem.id(), rhs_elem.id())) {
+				.eq => continue,
+				.lt => return .lt,
+				.gt => return .gt,
+			}
+		}
+	}
+	return std.math.order(lhs.len, rhs.len);
 }
 
 pub fn sortRecipes() void {
